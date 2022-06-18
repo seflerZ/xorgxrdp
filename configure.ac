@@ -1,8 +1,8 @@
 # Process this file with autoconf to produce a configure script
 
-AC_PREREQ(2.65)
+AC_PREREQ([2.71])
 # package version must be x.y.z
-AC_INIT([xorgxrdp], [0.9.80], [xrdp-devel@googlegroups.com])
+AC_INIT([xorgxrdp],[0.9.80],[xrdp-devel@googlegroups.com])
 package_version_major=$(echo ${PACKAGE_VERSION}|cut -d. -f1)
 package_version_minor=$(echo ${PACKAGE_VERSION}|cut -d. -f2)
 package_version_patchlevel=$(echo ${PACKAGE_VERSION}|cut -d. -f3)
@@ -14,7 +14,7 @@ AM_INIT_AUTOMAKE([1.11 foreign parallel-tests])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AC_PROG_CC
 AC_C_CONST
-AC_PROG_LIBTOOL
+LT_INIT
 
 AC_CONFIG_MACRO_DIR([m4])
 AX_CFLAGS_WARN_ALL
@@ -49,7 +49,7 @@ AC_SUBST([moduledir])
 
 # SIMD is optional
 AC_ARG_WITH([simd],
-    AC_HELP_STRING([--without-simd],[Omit SIMD extensions.]))
+    AS_HELP_STRING([--without-simd],[Omit SIMD extensions.]))
 if test "x${with_simd}" != "xno"; then
   # Check if we're on a supported CPU
   AC_MSG_CHECKING([if we have SIMD optimisations for cpu type])
