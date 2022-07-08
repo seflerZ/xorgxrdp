@@ -114,6 +114,16 @@ rdpInputMouseEvent(rdpPtr dev, int msg,
                    long param3, long param4)
 {
     dev->last_event_time_ms = GetTimeInMillis();
+    if (msg == 108 || msg == 110 || msg == 107 || msg == 109) {
+        if (dev->last_event_time_ms - dev->last_wheel_time_ms < 50)
+        {
+            return 0;
+        }
+    }
+
+    if (msg == 107 || msg == 109) {
+        dev->last_wheel_time_ms = dev->last_event_time_ms;
+    }
 
     if (g_input_proc[1].proc != 0)
     {

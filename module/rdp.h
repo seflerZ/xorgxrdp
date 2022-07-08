@@ -296,6 +296,7 @@ struct _rdpRec
     OsTimerPtr idleDisconnectTimer;
     int idle_disconnect_timeout_s;
     CARD32 last_event_time_ms;
+    CARD32 last_wheel_time_ms;
 
     int conNumber;
 

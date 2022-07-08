@@ -30,7 +30,7 @@ capture
 #include <xf86.h>
 
 /* maximum rects in the dirty region before the extents is used */
-#define MAX_CAPTURE_RECTS 15
+#define MAX_CAPTURE_RECTS 100
 #define MAX_CAPTURE_PIXELS 0x800000
 
 extern _X_EXPORT Bool
