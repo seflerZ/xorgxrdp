@@ -3171,6 +3171,11 @@ rdpCapRect(rdpClientCon *clientCon, BoxPtr cap_rect, int mon,
 }
 
 /******************************************************************************/
+#define MIN_MS_BETWEEN_FRAMES 5
+#define MIN_MS_TO_WAIT_FOR_MORE_UPDATES 5
+#define UPDATE_RETRY_TIMEOUT 200 // After this number of retries, give up and perform the capture anyway. This prevents an infinite loop.
+#define TOLERTANCE_FRAME_COUNT 10
+
 static CARD32
 rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
 {
@@ -3195,7 +3200,7 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
                clientCon->shmemstatus, clientCon->rect_id, clientCon->rect_id_ack));
         return 0;
     }
-    if ((clientCon->rect_id > clientCon->rect_id_ack) ||
+    if ((clientCon->rect_id > clientCon->rect_id_ack + TOLERTANCE_FRAME_COUNT) ||
         /* do not allow captures until we have the client_info */
         clientCon->client_info.size == 0)
     {
@@ -3226,9 +3231,9 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
             // Did we get anything from the last monitor?
             if (clientCon->rect_id > clientCon->rect_id_ack)
             {
-                LLOGLN(10, ("rdpDeferredUpdateCallback: reschedule rect_id %d "
-                       "rect_id_ack %d",
-                       clientCon->rect_id, clientCon->rect_id_ack));
+                LLOGLN(0, ("rdpDeferredUpdateCallback2: frame slow, throttled, reschedule rect_id %d "
+                    "rect_id_ack %d",
+                    clientCon->rect_id, clientCon->rect_id_ack));
                 break;
             }
             // Offset the monitor index by the rectangle ID so we start
@@ -3288,6 +3293,8 @@ rdpScheduleDeferredUpdate(rdpClientCon *clientCon)
     {
         msToWait = minNextUpdateTime - curTime;
     }
+
+    LLOGLN(0, ("schedule update"));
 
     clientCon->updateTimer = TimerSet(clientCon->updateTimer, 0,
                                       (CARD32) msToWait,
