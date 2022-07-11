@@ -3174,7 +3174,7 @@ rdpCapRect(rdpClientCon *clientCon, BoxPtr cap_rect, int mon,
 #define MIN_MS_BETWEEN_FRAMES 5
 #define MIN_MS_TO_WAIT_FOR_MORE_UPDATES 5
 #define UPDATE_RETRY_TIMEOUT 200 // After this number of retries, give up and perform the capture anyway. This prevents an infinite loop.
-#define TOLERTANCE_FRAME_COUNT 10
+#define TOLERTANCE_FRAME_COUNT 1
 
 static CARD32
 rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
@@ -3293,8 +3293,6 @@ rdpScheduleDeferredUpdate(rdpClientCon *clientCon)
     {
         msToWait = minNextUpdateTime - curTime;
     }
-
-    LLOGLN(0, ("schedule update"));
 
     clientCon->updateTimer = TimerSet(clientCon->updateTimer, 0,
                                       (CARD32) msToWait,
