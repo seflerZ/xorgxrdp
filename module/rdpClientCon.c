@@ -2459,6 +2459,11 @@ rdpCapRect(rdpClientCon *clientCon, BoxPtr cap_rect, struct image_data *id)
 }
 
 /******************************************************************************/
+#define MIN_MS_BETWEEN_FRAMES 5
+#define MIN_MS_TO_WAIT_FOR_MORE_UPDATES 5
+#define UPDATE_RETRY_TIMEOUT 200 // After this number of retries, give up and perform the capture anyway. This prevents an infinite loop.
+#define TOLERTANCE_FRAME_COUNT 10
+
 static CARD32
 rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
 {
@@ -2492,14 +2497,18 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
                clientCon->shmemstatus, clientCon->rect_id, clientCon->rect_id_ack));
         return 0;
     }
-    if ((clientCon->rect_id > clientCon->rect_id_ack) ||
+    if ((clientCon->rect_id > clientCon->rect_id_ack + TOLERTANCE_FRAME_COUNT) ||
         /* do not allow captures until we have the client_info */
         clientCon->client_info.size == 0)
     {
-        LLOGLN(10, ("rdpDeferredUpdateCallback: reschedule rect_id %d "
+        LLOGLN(0, ("rdpDeferredUpdateCallback: frame slow, throttled, reschedule rect_id %d "
                "rect_id_ack %d",
                clientCon->rect_id, clientCon->rect_id_ack));
-        rdpScheduleDeferredUpdate(clientCon);
+
+        clientCon->updateTimer = TimerSet(clientCon->updateTimer, 0,
+                                      MIN_MS_BETWEEN_FRAMES,
+                                      rdpDeferredUpdateCallback,
+                                      clientCon);
         return 0;
     }
     LLOGLN(10, ("rdpDeferredUpdateCallback: sending"));
@@ -2530,11 +2539,11 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
                    "band_count %d", band_index, band_count));
             while (band_index < band_count)
             {
-                if (clientCon->rect_id > clientCon->rect_id_ack)
+                if (clientCon->rect_id > clientCon->rect_id_ack + TOLERTANCE_FRAME_COUNT)
                 {
-                    LLOGLN(10, ("rdpDeferredUpdateCallback: reschedule "
-                           "rect_id %d rect_id_ack %d",
-                           clientCon->rect_id, clientCon->rect_id_ack));
+                    LLOGLN(0, ("rdpDeferredUpdateCallback: frame slow, throttled, reschedule rect_id %d "
+                        "rect_id_ack %d",
+                        clientCon->rect_id, clientCon->rect_id_ack));
                     break;
                 }
                 index = (clientCon->rect_id + band_index) % band_count;
@@ -2566,11 +2575,11 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
         monitor_count = clientCon->dev->monitorCount;
         while (monitor_index < monitor_count)
         {
-            if (clientCon->rect_id > clientCon->rect_id_ack)
+            if (clientCon->rect_id > clientCon->rect_id_ack + TOLERTANCE_FRAME_COUNT)
             {
-                LLOGLN(10, ("rdpDeferredUpdateCallback: reschedule rect_id %d "
-                       "rect_id_ack %d",
-                       clientCon->rect_id, clientCon->rect_id_ack));
+                LLOGLN(0, ("rdpDeferredUpdateCallback2: frame slow, throttled, reschedule rect_id %d "
+                    "rect_id_ack %d",
+                    clientCon->rect_id, clientCon->rect_id_ack));
                 break;
             }
             index = (clientCon->rect_id + monitor_index) % monitor_count;
@@ -2597,9 +2606,6 @@ rdpDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
 
 
 /******************************************************************************/
-#define MIN_MS_BETWEEN_FRAMES 40
-#define MIN_MS_TO_WAIT_FOR_MORE_UPDATES 10
-#define UPDATE_RETRY_TIMEOUT 200 // After this number of retries, give up and perform the capture anyway. This prevents an infinite loop.
 static void
 rdpScheduleDeferredUpdate(rdpClientCon *clientCon)
 {
@@ -2627,6 +2633,8 @@ rdpScheduleDeferredUpdate(rdpClientCon *clientCon)
     {
         msToWait = minNextUpdateTime - curTime;
     }
+
+    LLOGLN(0, ("schedule update"));
 
     clientCon->updateTimer = TimerSet(clientCon->updateTimer, 0,
                                       (CARD32) msToWait,
