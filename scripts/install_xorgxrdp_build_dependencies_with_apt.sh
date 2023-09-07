@@ -18,6 +18,7 @@ APT_EXTRA_ARGS="$@"
 PACKAGES=" \
     xserver-xorg-core \
     xserver-xorg-dev \
+    x11-utils \
     nasm \
     "
 
@@ -43,7 +44,7 @@ in
         ;;
     *)
         echo "unsupported architecture: $ARCH"
-        exit 1;
+        exit 1
         ;;
 esac
 

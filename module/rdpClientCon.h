@@ -68,8 +68,6 @@ struct _rdpClientCon
     struct stream *out_s;
     struct stream *in_s;
 
-    int rectIdAck;
-    int rectId;
     int connected; /* boolean. Set to False when I/O fails */
     int begin; /* boolean */
     int count;
@@ -107,6 +105,7 @@ struct _rdpClientCon
 
     uint8_t *shmemptr;
     int shmemid;
+    int shmem_bytes;
     int shmem_lineBytes;
     RegionPtr shmRegion;
     int rect_id;
@@ -136,9 +135,6 @@ extern _X_EXPORT int
 rdpClientConEndUpdate(rdpPtr dev, rdpClientCon *clientCon);
 extern _X_EXPORT int
 rdpClientConSetFgcolor(rdpPtr dev, rdpClientCon *clientCon, int fgcolor);
-extern _X_EXPORT void
-rdpClientConSendArea(rdpPtr dev, rdpClientCon *clientCon,
-                     struct image_data *id, int x, int y, int w, int h);
 extern _X_EXPORT int
 rdpClientConFillRect(rdpPtr dev, rdpClientCon *clientCon,
                      short x, short y, int cx, int cy);
@@ -182,5 +178,10 @@ extern _X_EXPORT int
 rdpClientConSetCursorEx(rdpPtr dev, rdpClientCon *clientCon,
                         short x, short y, uint8_t *cur_data,
                         uint8_t *cur_mask, int bpp);
+extern _X_EXPORT int
+rdpClientConSetCursorShmFd(rdpPtr dev, rdpClientCon *clientCon,
+                           short x, short y,
+                           uint8_t *cur_data, uint8_t *cur_mask, int bpp,
+                           int width, int height);
 
 #endif

@@ -30,6 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <gcstruct.h>
 #include <mipointer.h>
 #include <randrstr.h>
+#include <damage.h>
 
 #include "rdpPri.h"
 
@@ -284,7 +285,6 @@ struct _rdpRec
     int sendUpdateScheduled; /* boolean */
     OsTimerPtr sendUpdateTimer;
 
-    int do_dirty_os; /* boolean */
     int do_dirty_ons; /* boolean */
     int disconnect_scheduled; /* boolean */
     int do_kill_disconnected; /* boolean */

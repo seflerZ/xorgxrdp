@@ -675,6 +675,37 @@ rdpClientConProcessMsgVersion(rdpPtr dev, rdpClientCon *clientCon,
     return 0;
 }
 
+/**************************************************************************//**
+ * Allocate shared memory
+ *
+ * This memory is shared with the xup driver in xrdp which avoids a lot
+ * of unnecessary copying
+ *
+ * @param clientCon Client connection
+ * @param bytes Size of area to attach
+ */
+static void
+rdpClientConAllocateSharedMemory(rdpClientCon *clientCon, int bytes)
+{
+    if (clientCon->shmemptr != NULL && clientCon->shmem_bytes == bytes)
+    {
+        LLOGLN(0, ("rdpClientConAllocateSharedMemory: reusing shmemid %d",
+               clientCon->shmemid));
+        return;
+    }
+
+    if (clientCon->shmemptr != 0)
+    {
+        shmdt(clientCon->shmemptr);
+    }
+    clientCon->shmemid = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0777);
+    clientCon->shmemptr = shmat(clientCon->shmemid, 0, 0);
+    clientCon->shmem_bytes = bytes;
+    shmctl(clientCon->shmemid, IPC_RMID, NULL);
+    LLOGLN(0, ("rdpClientConAllocateSharedMemory: shmemid %d shmemptr %p bytes %d",
+           clientCon->shmemid, clientCon->shmemptr,
+           clientCon->shmem_bytes));
+}
 /******************************************************************************/
 /*
     this from miScreenInit
@@ -727,17 +758,9 @@ rdpClientConProcessScreenSizeMsg(rdpPtr dev, rdpClientCon *clientCon,
 
     clientCon->cap_stride_bytes = clientCon->rdp_width * clientCon->rdp_Bpp;
 
-    if (clientCon->shmemptr != 0)
-    {
-        shmdt(clientCon->shmemptr);
-    }
     bytes = clientCon->rdp_width * clientCon->rdp_height *
             clientCon->rdp_Bpp;
-    clientCon->shmemid = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0777);
-    clientCon->shmemptr = shmat(clientCon->shmemid, 0, 0);
-    shmctl(clientCon->shmemid, IPC_RMID, NULL);
-    LLOGLN(0, ("rdpClientConProcessScreenSizeMsg: shmemid %d shmemptr %p",
-           clientCon->shmemid, clientCon->shmemptr));
+    rdpClientConAllocateSharedMemory(clientCon, bytes);
     clientCon->shmem_lineBytes = clientCon->rdp_Bpp * clientCon->rdp_width;
 
     if (clientCon->shmRegion != 0)
@@ -869,17 +892,9 @@ rdpClientConProcessMsgClientInfo(rdpPtr dev, rdpClientCon *clientCon)
         clientCon->cap_height = RDPALIGN(clientCon->rdp_height, 64);
         LLOGLN(0, ("  cap_width %d cap_height %d",
                clientCon->cap_width, clientCon->cap_height));
-        if (clientCon->shmemptr != 0)
-        {
-            shmdt(clientCon->shmemptr);
-        }
         bytes = clientCon->cap_width * clientCon->cap_height *
                 clientCon->rdp_Bpp;
-        clientCon->shmemid = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0777);
-        clientCon->shmemptr = shmat(clientCon->shmemid, 0, 0);
-        shmctl(clientCon->shmemid, IPC_RMID, NULL);
-        LLOGLN(0, ("rdpClientConProcessMsgClientInfo: shmemid %d shmemptr %p "
-               "bytes %d", clientCon->shmemid, clientCon->shmemptr, bytes));
+        rdpClientConAllocateSharedMemory(clientCon, bytes);
         clientCon->shmem_lineBytes = clientCon->rdp_Bpp * clientCon->cap_width;
         clientCon->cap_stride_bytes = clientCon->cap_width * 4;
         shmemstatus = SHM_RFX_ACTIVE;
@@ -891,16 +906,8 @@ rdpClientConProcessMsgClientInfo(rdpPtr dev, rdpClientCon *clientCon)
         clientCon->cap_height = clientCon->rdp_height;
         LLOGLN(0, ("  cap_width %d cap_height %d",
                clientCon->cap_width, clientCon->cap_height));
-        if (clientCon->shmemptr != 0)
-        {
-            shmdt(clientCon->shmemptr);
-        }
         bytes = clientCon->cap_width * clientCon->cap_height * 2;
-        clientCon->shmemid = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0777);
-        clientCon->shmemptr = shmat(clientCon->shmemid, 0, 0);
-        shmctl(clientCon->shmemid, IPC_RMID, NULL);
-        LLOGLN(0, ("rdpClientConProcessMsgClientInfo: shmemid %d shmemptr %p "
-               "bytes %d", clientCon->shmemid, clientCon->shmemptr, bytes));
+        rdpClientConAllocateSharedMemory(clientCon, bytes);
         clientCon->shmem_lineBytes = clientCon->rdp_Bpp * clientCon->cap_width;
         clientCon->cap_stride_bytes = clientCon->cap_width * 4;
         shmemstatus = SHM_H264_ACTIVE;
@@ -1971,6 +1978,56 @@ rdpClientConSetCursorEx(rdpPtr dev, rdpClientCon *clientCon,
 
 /******************************************************************************/
 int
+rdpClientConSetCursorShmFd(rdpPtr dev, rdpClientCon *clientCon,
+                           short x, short y,
+                           uint8_t *cur_data, uint8_t *cur_mask, int bpp,
+                           int width, int height)
+{
+    int size;
+    int Bpp;
+    int fd = -1;
+    int rv = 0;
+    void *addr = NULL;
+    uint8_t *shmemptr;
+    size_t shmsize;
+
+    if (clientCon->connected)
+    {
+        LLOGLN(10, ("rdpClientConSetCursorShm:"));
+        Bpp = (bpp == 0) ? 3 : (bpp + 7) / 8;
+        shmsize = width * height * Bpp + width * height / 8;
+        if (g_alloc_shm_map_fd(&addr, &fd, shmsize) != 0)
+        {
+            LLOGLN(0, ("rdpClientConSetCursorShmFd: rdpGetShmFd failed"));
+            return 0;
+        }
+        shmemptr = (uint8_t *)addr;
+        size = 14;
+        rdpClientConPreCheck(dev, clientCon, size);
+        out_uint16_le(clientCon->out_s, 63); /* set cursor shmfd */
+        out_uint16_le(clientCon->out_s, size); /* size */
+        clientCon->count++;
+        x = max(0, x);
+        x = min(width - 1, x);
+        y = max(0, y);
+        y = min(height - 1, y);
+        out_uint16_le(clientCon->out_s, x);
+        out_uint16_le(clientCon->out_s, y);
+        out_uint16_le(clientCon->out_s, bpp);
+        out_uint16_le(clientCon->out_s, width);
+        out_uint16_le(clientCon->out_s, height);
+        memcpy(shmemptr, cur_data, width * height * Bpp);
+        memcpy(shmemptr + width * height * Bpp, cur_mask, width * height / 8);
+        rdpClientConSendPending(clientCon->dev, clientCon);
+        rv = g_sck_send_fd_set(clientCon->sck, "int", 4, &fd, 1);
+        LLOGLN(10, ("rdpClientConSetCursorShmFd: g_sck_send_fd_set rv %d", rv));
+        g_free_unmap_fd(shmemptr, fd, shmsize);
+    }
+    return rv;
+}
+
+/******************************************************************************/
+int
 rdpClientConCreateOsSurface(rdpPtr dev, rdpClientCon *clientCon,
                             int rdpindex, int width, int height)
 {
@@ -2290,14 +2347,7 @@ rdpClientConDeferredUpdateCallback(OsTimerPtr timer, CARD32 now, pointer arg)
     {
         if (dev->do_dirty_ons)
         {
-            if (clientCon->rectId == clientCon->rectIdAck)
-            {
-                rdpClientConCheckDirtyScreen(dev, clientCon);
-            }
-            else
-            {
-                LLOGLN(0, ("rdpClientConDeferredUpdateCallback: skipping"));
-            }
+            rdpClientConCheckDirtyScreen(dev, clientCon);
         }
         else
         {
@@ -2699,135 +2749,6 @@ rdpClientConGetScreenImageRect(rdpPtr dev, rdpClientCon *clientCon,
     id->shmem_id = clientCon->shmemid;
     id->shmem_offset = 0;
     id->shmem_lineBytes = clientCon->shmem_lineBytes;
-}
-
-/******************************************************************************/
-void
-rdpClientConGetPixmapImageRect(rdpPtr dev, rdpClientCon *clientCon,
-                               PixmapPtr pPixmap, struct image_data *id)
-{
-    id->width = pPixmap->drawable.width;
-    id->height = pPixmap->drawable.height;
-    id->bpp = clientCon->rdp_bpp;
-    id->Bpp = clientCon->rdp_Bpp;
-    id->lineBytes = pPixmap->devKind;
-    id->pixels = (uint8_t *)(pPixmap->devPrivate.ptr);
-    id->shmem_pixels = 0;
-    id->shmem_id = 0;
-    id->shmem_offset = 0;
-    id->shmem_lineBytes = 0;
-}
-
-/******************************************************************************/
-void
-rdpClientConSendArea(rdpPtr dev, rdpClientCon *clientCon,
-                     struct image_data *id, int x, int y, int w, int h)
-{
-    struct image_data lid;
-    BoxRec box;
-    int ly;
-    int size;
-    const uint8_t *src;
-    uint8_t *dst;
-    struct stream *s;
-
-    LLOGLN(10, ("rdpClientConSendArea: id %p x %d y %d w %d h %d", id, x, y, w, h));
-
-    if (id == NULL)
-    {
-        rdpClientConGetScreenImageRect(dev, clientCon, &lid);
-        id = &lid;
-    }
-
-    if (x >= id->width)
-    {
-        return;
-    }
-
-    if (y >= id->height)
-    {
-        return;
-    }
-
-    if (x < 0)
-    {
-        w += x;
-        x = 0;
-    }
-
-    if (y < 0)
-    {
-        h += y;
-        y = 0;
-    }
-
-    if (w <= 0)
-    {
-        return;
-    }
-
-    if (h <= 0)
-    {
-        return;
-    }
-
-    if (x + w > id->width)
-    {
-        w = id->width - x;
-    }
-
-    if (y + h > id->height)
-    {
-        h = id->height - y;
-    }
-
-    if (clientCon->connected && clientCon->begin)
-    {
-        if (id->shmem_pixels != 0)
-        {
-            LLOGLN(10, ("rdpClientConSendArea: using shmem"));
-            box.x1 = x;
-            box.y1 = y;
-            box.x2 = box.x1 + w;
-            box.y2 = box.y1 + h;
-            src = id->pixels;
-            src += y * id->lineBytes;
-            src += x * dev->Bpp;
-            dst = id->shmem_pixels + id->shmem_offset;
-            dst += y * id->shmem_lineBytes;
-            dst += x * clientCon->rdp_Bpp;
-            ly = y;
-            while (ly < y + h)
-            {
-                rdpClientConConvertPixels(dev, clientCon, src, dst, w);
-                src += id->lineBytes;
-                dst += id->shmem_lineBytes;
-                ly += 1;
-            }
-            size = 36;
-            rdpClientConPreCheck(dev, clientCon, size);
-            s = clientCon->out_s;
-            out_uint16_le(s, 60);
-            out_uint16_le(s, size);
-            clientCon->count++;
-            LLOGLN(10, ("rdpClientConSendArea: 2 x %d y %d w %d h %d", x, y, w, h));
-            out_uint16_le(s, x);
-            out_uint16_le(s, y);
-            out_uint16_le(s, w);
-            out_uint16_le(s, h);
-            out_uint32_le(s, 0);
-            clientCon->rect_id++;
-            out_uint32_le(s, clientCon->rect_id);
-            out_uint32_le(s, id->shmem_id);
-            out_uint32_le(s, id->shmem_offset);
-            out_uint16_le(s, id->width);
-            out_uint16_le(s, id->height);
-            out_uint16_le(s, x);
-            out_uint16_le(s, y);
-            rdpRegionUnionRect(clientCon->shmRegion, &box);
-            return;
-        }
-    }
 }
 
 /******************************************************************************/
