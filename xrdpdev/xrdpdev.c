@@ -69,7 +69,7 @@ This is the main driver file
 #include <glamor.h>
 /* use environment variable XORGXRDP_DRM_DEVICE to override
  * also read from xorg.conf file */
-char g_drm_device[128] = "/dev/dri/renderD128";
+char g_drm_device[128] = "/dev/dri/card0";
 Bool g_use_dri2 = TRUE;
 Bool g_use_dri3 = TRUE;
 #endif
