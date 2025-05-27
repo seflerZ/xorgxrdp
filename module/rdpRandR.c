@@ -421,7 +421,7 @@ rdpRRConnectOutput(RROutputPtr output, RRCrtcPtr crtc,
     RRModePtr mode;
     xRRModeInfo modeInfo = {0};
     char name[64];
-    const int vfreq = 50;
+    const int vfreq = 60;
 
     LLOGLN(0, ("rdpRRConnectOutput:"));
     sprintf (name, "%dx%d", width, height);
